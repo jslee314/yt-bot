@@ -1,0 +1,9 @@
+.env
+state.db
+__pycache__/
+*.pyc
+.venv/
+deploy/ssh_keys/*
+!deploy/ssh_keys/.gitkeep
+/tmp/
+*.png

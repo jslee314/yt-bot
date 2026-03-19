@@ -1,0 +1,14 @@
+[Unit]
+Description=yt-bot Telegram Bot
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/yt-bot
+ExecStart=/home/ubuntu/yt-bot/.venv/bin/python bot.py
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
