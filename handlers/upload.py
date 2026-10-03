@@ -8,7 +8,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from config import LOCAL_YT_UPLOAD_DIR, PYTHON_BIN
-from handlers.common import auth_check, ssh_connect_error_reply, ssh_error_reply
+from handlers.common import auth_check, ssh_connect_error_reply, ssh_error_reply, reject_bad_id, valid_video_id
 from services.runner import runner as ssh
 from services.state import save_decision
 
@@ -24,6 +24,8 @@ async def upload_now_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
 
     video_id = query.data.split(":")[1]
+    if await reject_bad_id(query, video_id):
+        return
     await query.edit_message_text("\U0001f4e4 \uc5c5\ub85c\ub4dc \uc2dc\uc791...")
 
     try:
@@ -54,6 +56,8 @@ async def upload_schedule_callback(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
 
     video_id = query.data.split(":")[1]
+    if await reject_bad_id(query, video_id):
+        return
     context.user_data["waiting_for"] = "schedule"
     context.user_data["pending_video_id"] = video_id
 
@@ -67,6 +71,9 @@ async def handle_schedule_input(update: Update, context: ContextTypes.DEFAULT_TY
     """노출 시각 텍스트 입력 처리."""
     video_id = context.user_data.get("pending_video_id")
     if not video_id:
+        return
+    if not valid_video_id(video_id):
+        await update.message.reply_text("⚠️ 잘못된 영상 ID 형식입니다.")
         return
 
     text = update.message.text.strip()
@@ -103,6 +110,8 @@ async def schedule_confirm_callback(update: Update, context: ContextTypes.DEFAUL
     await query.answer()
 
     video_id = query.data.split(":")[1]
+    if await reject_bad_id(query, video_id):
+        return
     iso_str = context.user_data.get("schedule_dt")
     if not iso_str:
         await query.edit_message_text("\u26a0\ufe0f \uc608\uc57d \uc815\ubcf4\uac00 \uc5c6\uc2b5\ub2c8\ub2e4. \ub2e4\uc2dc \uc2dc\ub3c4\ud574\uc8fc\uc138\uc694.")

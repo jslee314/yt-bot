@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from config import LOCAL_YT_PRODUCTION_DIR
-from handlers.common import auth_check, ssh_connect_error_reply
+from handlers.common import auth_check, ssh_connect_error_reply, reject_bad_id, valid_video_id
 from services.runner import runner as ssh
 from services.state import save_decision
 
@@ -21,6 +21,8 @@ async def title_change_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
 
     video_id = query.data.split(":")[1]
+    if await reject_bad_id(query, video_id):
+        return
     context.user_data["waiting_for"] = "title"
     context.user_data["pending_video_id"] = video_id
 
@@ -42,6 +44,9 @@ async def handle_title_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """새 제목 텍스트 입력 처리."""
     video_id = context.user_data.get("pending_video_id")
     if not video_id:
+        return
+    if not valid_video_id(video_id):
+        await update.message.reply_text("⚠️ 잘못된 영상 ID 형식입니다.")
         return
 
     new_title = update.message.text.strip()

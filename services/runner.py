@@ -22,6 +22,8 @@ def _env() -> dict:
     """homebrew 경로를 앞에 붙인 환경 — ffmpeg/ffprobe 탐색 보장."""
     env = os.environ.copy()
     env["PATH"] = f"{PATH_PREPEND}:{env.get('PATH', '')}"
+    # 봇 토큰은 파이프라인이 쓰지 않는다. 자식 트리 전체에 퍼뜨릴 이유가 없다.
+    env.pop("TELEGRAM_BOT_TOKEN", None)
     return env
 
 

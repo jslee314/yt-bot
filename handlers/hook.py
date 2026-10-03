@@ -7,7 +7,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from config import LOCAL_YT_PRODUCTION_DIR, LOCAL_YT_SCRIPT_DIR, PYTHON_BIN
-from handlers.common import auth_check, ssh_connect_error_reply, ssh_error_reply
+from handlers.common import auth_check, ssh_connect_error_reply, ssh_error_reply, reject_bad_id
 from services.runner import runner as ssh
 from services.state import save_decision
 
@@ -21,6 +21,8 @@ async def hook_change_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
 
     video_id = query.data.split(":")[1]
+    if await reject_bad_id(query, video_id):
+        return
 
     try:
         metadata_path = f"{LOCAL_YT_PRODUCTION_DIR}/runs/{video_id}_script/metadata.json"
@@ -61,6 +63,8 @@ async def hook_select_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     parts = query.data.split(":")
     video_id = parts[1]
+    if await reject_bad_id(query, video_id):
+        return
     index = int(parts[2])
 
     await query.edit_message_text(f"\u2705 \ud6c5 #{index + 1} \uc120\ud0dd. \uc7ac\uc0dd\uc131 \uc911...")

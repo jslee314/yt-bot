@@ -9,7 +9,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from config import LOCAL_YT_PRODUCTION_DIR, PYTHON_BIN
-from handlers.common import auth_check, ssh_connect_error_reply, ssh_error_reply
+from handlers.common import auth_check, ssh_connect_error_reply, ssh_error_reply, reject_bad_id, valid_video_id
 from services.runner import runner as ssh
 from services.state import save_decision
 
@@ -57,6 +57,8 @@ async def thumb_change_callback(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     video_id = query.data.split(":")[1]
+    if await reject_bad_id(query, video_id):
+        return
     await _show_thumb_candidates(update, video_id, context)
 
 
@@ -66,6 +68,8 @@ async def thumb_change_prod_callback(update: Update, context: ContextTypes.DEFAU
     query = update.callback_query
     await query.answer()
     video_id = query.data.split(":")[1]
+    if await reject_bad_id(query, video_id):
+        return
 
     buttons = [
         [
@@ -90,6 +94,8 @@ async def thumb_full_regen_callback(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     await query.answer()
     video_id = query.data.split(":")[1]
+    if await reject_bad_id(query, video_id):
+        return
 
     await query.edit_message_text("\U0001f504 Whisk AI \uc774\ubbf8\uc9c0 + Pillow \ud569\uc131 \uc7ac\uc2e4\ud589 \uc911...")
 
@@ -122,6 +128,8 @@ async def thumb_select_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     parts = query.data.split(":")
     video_id = parts[1]
+    if await reject_bad_id(query, video_id):
+        return
     index = int(parts[2])
 
     try:
@@ -145,6 +153,9 @@ async def handle_thumb_direct_input(update: Update, context: ContextTypes.DEFAUL
     """직접 입력 처리 (line1 / line2 형식)."""
     video_id = context.user_data.get("pending_video_id")
     if not video_id:
+        return
+    if not valid_video_id(video_id):
+        await update.message.reply_text("⚠️ 잘못된 영상 ID 형식입니다.")
         return
 
     text = update.message.text

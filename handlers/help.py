@@ -11,7 +11,7 @@ README 는 컴퓨터에서나 보지만, 이 봇은 폰에서 쓴다.
 import logging
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, filters
 
 from handlers.common import auth_check
 
@@ -209,4 +209,4 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def register(app: Application):
     # Telegram 명령은 소문자 영문·숫자·밑줄만 허용한다 — 한글 별칭을 넣으면 기동 시
     # CommandHandler 가 ValueError 를 던져 봇이 재시작 루프에 빠진다 (2026-10-03 실측).
-    app.add_handler(CommandHandler(["help", "start"], cmd_help))
+    app.add_handler(CommandHandler(["help", "start"], cmd_help, filters=filters.UpdateType.MESSAGE))

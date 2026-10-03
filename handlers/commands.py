@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, filters
 
 from config import (
     CHANNELS,
@@ -344,10 +344,10 @@ async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def register(app: Application):
-    app.add_handler(CommandHandler("status", cmd_status))
-    app.add_handler(CommandHandler("queue", cmd_queue))
-    app.add_handler(CommandHandler("run", cmd_run))
-    app.add_handler(CommandHandler("log", cmd_log))
-    app.add_handler(CommandHandler("stop", cmd_stop))
-    app.add_handler(CommandHandler("stuck", cmd_stuck))
-    app.add_handler(CommandHandler("link", cmd_link))
+    app.add_handler(CommandHandler("status", cmd_status, filters=filters.UpdateType.MESSAGE))
+    app.add_handler(CommandHandler("queue", cmd_queue, filters=filters.UpdateType.MESSAGE))
+    app.add_handler(CommandHandler("run", cmd_run, filters=filters.UpdateType.MESSAGE))
+    app.add_handler(CommandHandler("log", cmd_log, filters=filters.UpdateType.MESSAGE))
+    app.add_handler(CommandHandler("stop", cmd_stop, filters=filters.UpdateType.MESSAGE))
+    app.add_handler(CommandHandler("stuck", cmd_stuck, filters=filters.UpdateType.MESSAGE))
+    app.add_handler(CommandHandler("link", cmd_link, filters=filters.UpdateType.MESSAGE))
