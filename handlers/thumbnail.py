@@ -8,9 +8,9 @@ import tempfile
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from config import LOCAL_YT_PRODUCTION_DIR
+from config import LOCAL_YT_PRODUCTION_DIR, PYTHON_BIN
 from handlers.common import auth_check, ssh_connect_error_reply, ssh_error_reply
-from services.ssh import ssh
+from services.runner import runner as ssh
 from services.state import save_decision
 
 logger = logging.getLogger(__name__)
@@ -96,8 +96,8 @@ async def thumb_full_regen_callback(update: Update, context: ContextTypes.DEFAUL
     try:
         cmd = (
             f"cd {LOCAL_YT_PRODUCTION_DIR} && "
-            f"python -m thumbnail.generator --run-dir runs/{video_id}_script/ && "
-            f"python -m thumbnail.composer --run-dir runs/{video_id}_script/"
+            f"{PYTHON_BIN} -m thumbnail.generator --run-dir runs/{video_id}_script/ && "
+            f"{PYTHON_BIN} -m thumbnail.composer --run-dir runs/{video_id}_script/"
         )
         out, err = ssh.execute(cmd)
     except Exception:
@@ -173,7 +173,7 @@ async def _regenerate_thumbnail(update: Update, context: ContextTypes.DEFAULT_TY
         # Pillow 합성 재실행
         cmd = (
             f"cd {LOCAL_YT_PRODUCTION_DIR} && "
-            f"python -m thumbnail.composer --run-dir runs/{video_id}_script/"
+            f"{PYTHON_BIN} -m thumbnail.composer --run-dir runs/{video_id}_script/"
         )
         out, err = ssh.execute(cmd)
     except Exception:

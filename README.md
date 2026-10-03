@@ -1,27 +1,67 @@
 # yt-bot
 
-YouTube 자동화 파이프라인(yt-script, yt-production, yt-upload)의 **사후 승인/수정 Telegram 봇**.
+YouTube 자동화 파이프라인(yt-script → yt-production_whisk → yt-upload)의
+**모바일 모니터링 + 조작** 텔레그램 봇.
 
-파이프라인은 항상 1번 후보로 끝까지 자동 완주하고, 봇은 결과를 알려준 뒤 수정이 필요하면 처리한다.
+파이프라인은 1번 후보로 끝까지 자동 완주하고, 봇은 결과를 알려준 뒤
+수정이 필요하면 처리한다.
 
 ## 아키텍처
 
+봇은 **파이프라인과 같은 맥에서** 돈다. 롱폴링이라 맥에서 바깥으로 나가는
+연결만 쓰므로 포트 개방·DDNS·클라우드 VM이 전부 불필요하다.
+
 ```
-[로컬 PC]                        [Oracle Cloud]           [Telegram]
-                                  yt-bot 서버
-파이프라인 완료                    (python-telegram-bot
-  → Telegram Bot API               + paramiko SSH)  ──→  📱 알림
-    직접 호출 (HTTP) ──────────→                            │
-                                                            ↓
-                                                        사용자 응답
-                                                            │
-                                  봇이 callback 처리  ←─────┘
-                                    ↓
-                                  SSH로 로컬 PC 접속
-                                    → 해당 스텝만 재실행
+[맥 (집)]                                      [Telegram]
+
+launchd ──03:00── auto_pipeline.sh
+  (자고 있었으면            │
+   깨어날 때 실행)          ├─ 시작/성공/실패 ──→ 📱 알림
+                            │   (notify.sh, curl)
+                            ├─ yt-production_whisk
+                            └─ yt-upload
+
+launchd ─상주─ yt-bot (롱폴링) ←────────────── 📱 /status /run /log
+                            │                       /queue /stop
+                            └─ 로컬 subprocess 실행
 ```
 
-## 개입 지점
+초기 설계는 Oracle Cloud에 봇을 올리고 SSH로 맥에 역접속하는 구조였으나,
+폴링 봇에 SSH를 붙일 이유가 없고 집 맥에 22번 포트를 여는 건 순수 리스크
+추가여서 폐기했다. `services/ssh.py`(paramiko)는 동일 인터페이스의
+`services/runner.py`(로컬 subprocess)로 교체됐고 핸들러는 그대로 쓴다.
+
+## 설치
+
+```bash
+bash deploy/install_local.sh
+```
+
+`.env`가 없으면 만드는 방법을 안내하고 멈춘다. 필요한 건 두 값뿐이다.
+
+| 값 | 얻는 방법 |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | 텔레그램에서 `@BotFather` → `/newbot` |
+| `TELEGRAM_CHAT_ID` | 봇에게 메시지 하나 보낸 뒤 `getUpdates`로 확인 (`.env.example` 참고) |
+
+설치 스크립트는 토큰 유효성과 `chat_id` 도달 가능 여부까지 실제로 검증한 뒤
+launchd에 등록한다.
+
+## 명령
+
+| 명령 | 동작 |
+|---|---|
+| `/status` | 마지막 성공 시각, 최근 실행 판정, 큐 길이, 다음 대상, throttle 잔여 |
+| `/queue` | 미업로드 작업 목록 (파이프라인이 집는 순서) |
+| `/run` | 지금 실행 (24시간 제한 적용) |
+| `/run force` | 24시간 제한 무시하고 실행 |
+| `/log [줄수]` | 최근 실행 로그 tail (기본 40줄) |
+| `/stop` | 실행 중인 파이프라인 중단 |
+
+`/status`는 마지막 성공이 `STALE_WARN_DAYS`(기본 3일)를 넘기면 경고를 띄운다.
+**알림이 없어 조용히 죽은 걸 모르는 상황**을 막는 장치다.
+
+## 개입 지점 (파이프라인 알림에 붙는 버튼)
 
 | # | 개입 지점 | 타이밍 |
 |---|----------|--------|
@@ -35,76 +75,37 @@ YouTube 자동화 파이프라인(yt-script, yt-production, yt-upload)의 **사�
 
 ```
 yt-bot/
-├── bot.py                      # 메인 진입점 (polling)
-├── config.py                   # 환경변수, SSH/경로 설정
-├── requirements.txt
-├── handlers/
-│   ├── common.py               # 인증 체크, 에러 핸들링
-│   ├── hook.py                 # 훅 선택/변경
-│   ├── thumbnail.py            # 썸네일 문구/이미지 변경
-│   ├── title.py                # 제목 수정
-│   ├── upload.py               # 업로드 (즉시/예약)
-│   ├── script_complete.py      # 알림1 핸들러 등록
-│   └── production_complete.py  # 알림2 핸들러 등록
+├── bot.py                      # 진입점 (롱폴링, 명령 메뉴 등록)
+├── config.py                   # 환경변수, 경로, PYTHON_BIN
 ├── services/
-│   ├── ssh.py                  # SSH 클라이언트 (paramiko)
-│   ├── state.py                # SQLite 상태 관리
-│   └── notifier.py             # 알림 발송
-├── notify/
-│   └── send.py                 # 파이프라인에서 import하는 알림 모듈
+│   ├── runner.py               # 로컬 실행기 (execute/spawn/read/write)
+│   ├── pipeline.py             # 파이프라인 상태 조회 (단일 진실 공급원)
+│   └── state.py                # 결정 이력 (SQLite)
+├── handlers/
+│   ├── commands.py             # /status /queue /run /log /stop /help
+│   ├── script_complete.py      # 알림 1 (훅·썸네일·제목)
+│   ├── production_complete.py  # 알림 2 (업로드·예약)
+│   ├── hook.py / thumbnail.py / title.py / upload.py
+│   └── common.py               # chat_id 인증, 에러 응답
+├── notify/send.py              # 파이프라인에서 쓰는 알림 발송 (봇 없이도 동작)
 └── deploy/
-    ├── setup_oracle.sh         # Oracle Cloud VM 초기 설정
-    └── systemd/
-        └── yt-bot.service      # systemd 서비스 파일
+    ├── install_local.sh        # 설치 (검증 → launchd 등록)
+    └── com.jslee.yt-bot.plist  # 상주 설정
 ```
 
-## 설정
+## 관련 파일 (yt-bot 밖)
 
-```bash
-cp .env.example .env
-# .env 파일에 실제 값 입력
-pip install -r requirements.txt
-python bot.py
-```
+| 경로 | 역할 |
+|---|---|
+| `../auto_pipeline.sh` | 파이프라인 오케스트레이터. 단계별 알림 훅 포함 |
+| `../notify.sh` | 쉘용 알림 헬퍼 (curl만 사용, 봇 없이 동작) |
+| `../com.jslee.yt-pipeline.plist` | 파이프라인 스케줄 (cron 대체) |
 
-### 환경변수
+### cron을 쓰지 않는 이유
 
-| 변수 | 설명 |
-|------|------|
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot API 토큰 |
-| `TELEGRAM_CHAT_ID` | 사용자 chat_id (고정) |
-| `SSH_HOST` | 로컬 PC 공인 IP 또는 DDNS |
-| `SSH_PORT` | SSH 포트 (기본 22) |
-| `SSH_USER` | SSH 사용자명 |
-| `SSH_KEY_PATH` | SSH 비밀키 경로 |
-| `LOCAL_YT_SCRIPT_DIR` | 로컬 yt-script 경로 |
-| `LOCAL_YT_PRODUCTION_DIR` | 로컬 yt-production 경로 |
-| `LOCAL_YT_UPLOAD_DIR` | 로컬 yt-upload 경로 |
-
-## 파이프라인 연동
-
-```bash
-# notify 모듈 심볼릭 링크
-ln -s ~/yt-bot/notify ~/yt-script/notify
-ln -s ~/yt-bot/notify ~/yt-production/notify
-```
-
-파이프라인 코드 마지막에 추가:
-
-```python
-# yt-script
-from notify.send import notify_script_complete
-notify_script_complete(video_id, metadata, output_dir)
-
-# yt-production
-from notify.send import notify_production_complete
-notify_production_complete(video_id, metadata, run_dir)
-```
-
-## 배포 (Oracle Cloud)
-
-```bash
-bash deploy/setup_oracle.sh
-```
-
-의존성: `python-telegram-bot`, `paramiko`, `python-dotenv`
+맥이 03:00에 자고 있으면 cron은 그 실행을 **영구히 건너뛴다.**
+실제로 `crontab(0 3 * * *)`과 `pmset` 기상 시각(05:55)이 어긋나
+2026-05-19 이후 약 5개월간 파이프라인이 한 번도 돌지 않았고,
+알림이 없어 아무도 몰랐다. launchd는 `StartCalendarInterval`을 놓치면
+**깨어날 때 실행**한다. 또 파이프라인이 수십 분~수 시간 걸리므로
+`caffeinate -i`로 감싸 유휴 절전이 중간에 끼어들지 못하게 한다.

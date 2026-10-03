@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.org/DTDs/PropertyList-1.0.dtd">
+<!--
+  yt-bot 상주 — 텔레그램 롱폴링.
+
+  폴링이므로 맥에서 바깥으로 나가는 연결만 쓴다. 포트 개방·DDNS·클라우드 VM 불필요.
+  KeepAlive로 죽으면 자동 재시작한다.
+
+  설치:
+    cp deploy/com.jslee.yt-bot.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jslee.yt-bot.plist
+  로그:
+    tail -f /Users/jslee/Projects/yt-bot/bot.log
+  재시작:
+    launchctl kickstart -k gui/$(id -u)/com.jslee.yt-bot
+  제거:
+    launchctl bootout gui/$(id -u)/com.jslee.yt-bot
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jslee.yt-bot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/jslee/Projects/yt-bot/.venv/bin/python</string>
+        <string>/Users/jslee/Projects/yt-bot/bot.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jslee/Projects/yt-bot</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <!-- 설정 오류로 즉시 종료할 때 무한 재시작 루프를 막는다 -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+        <key>LANG</key>
+        <string>ko_KR.UTF-8</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/jslee/Projects/yt-bot/bot.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/jslee/Projects/yt-bot/bot.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

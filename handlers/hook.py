@@ -6,9 +6,9 @@ import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from config import LOCAL_YT_PRODUCTION_DIR, LOCAL_YT_SCRIPT_DIR
+from config import LOCAL_YT_PRODUCTION_DIR, LOCAL_YT_SCRIPT_DIR, PYTHON_BIN
 from handlers.common import auth_check, ssh_connect_error_reply, ssh_error_reply
-from services.ssh import ssh
+from services.runner import runner as ssh
 from services.state import save_decision
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ async def hook_select_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         cmd = (
             f"cd {LOCAL_YT_SCRIPT_DIR} && "
-            f"python run.py rehook {video_id} --hook-index {index}"
+            f"{PYTHON_BIN} run.py rehook {video_id} --hook-index {index}"
         )
         out, err = ssh.execute(cmd)
     except Exception:

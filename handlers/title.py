@@ -8,7 +8,7 @@ from telegram.ext import ContextTypes
 
 from config import LOCAL_YT_PRODUCTION_DIR
 from handlers.common import auth_check, ssh_connect_error_reply
-from services.ssh import ssh
+from services.runner import runner as ssh
 from services.state import save_decision
 
 logger = logging.getLogger(__name__)

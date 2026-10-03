@@ -1,9 +1,10 @@
-.env
-state.db
-__pycache__/
-*.pyc
-.venv/
-deploy/ssh_keys/*
 !deploy/ssh_keys/.gitkeep
-/tmp/
 *.png
+*.pyc
+.env
+.venv/
+/tmp/
+__pycache__/
+bot.log
+deploy/ssh_keys/*
+state.db

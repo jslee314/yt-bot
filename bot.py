@@ -1,12 +1,18 @@
-"""yt-bot — Telegram 봇 메인 진입점 (polling 방식)."""
+"""yt-bot — Telegram 봇 메인 진입점 (롱폴링).
 
+파이프라인과 같은 맥에서 돈다. 롱폴링이라 텔레그램으로 나가는 연결만 쓰므로
+포트 개방·DDNS·클라우드 VM이 필요 없다.
+"""
+
+import asyncio
 import logging
 
-from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram import BotCommand, Update
+from telegram.ext import Application, ContextTypes, MessageHandler, filters
 
+import config
 from config import BOT_TOKEN, CHAT_ID
-from handlers import script_complete, production_complete
+from handlers import commands, production_complete, script_complete
 from handlers.common import auth_check
 from handlers.thumbnail import handle_thumb_direct_input
 from handlers.title import handle_title_input
@@ -18,6 +24,15 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+MENU = [
+    BotCommand("status", "파이프라인 상태"),
+    BotCommand("queue", "남은 작업 목록"),
+    BotCommand("run", "지금 실행"),
+    BotCommand("log", "최근 로그"),
+    BotCommand("stop", "실행 중단"),
+    BotCommand("help", "도움말"),
+]
 
 
 @auth_check
@@ -31,12 +46,24 @@ async def text_input_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_thumb_direct_input(update, context)
     elif waiting_for == "schedule":
         await handle_schedule_input(update, context)
+    else:
+        await update.message.reply_text("명령은 /help 를 보세요.")
+
+
+async def _post_init(app: Application):
+    """폰의 명령 메뉴(/ 버튼)에 명령 목록을 등록."""
+    await app.bot.set_my_commands(MENU)
+    logger.info("command menu registered")
 
 
 def main():
+    config.validate()
     init_db()
 
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(_post_init).build()
+
+    # 슬래시 명령 (상태 확인 / 실행 / 로그)
+    commands.register(app)
 
     # 알림 1 관련 핸들러 (훅, 썸네일, 제목)
     script_complete.register(app)

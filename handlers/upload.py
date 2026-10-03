@@ -7,9 +7,9 @@ from datetime import datetime, timedelta, timezone
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from config import LOCAL_YT_UPLOAD_DIR
+from config import LOCAL_YT_UPLOAD_DIR, PYTHON_BIN
 from handlers.common import auth_check, ssh_connect_error_reply, ssh_error_reply
-from services.ssh import ssh
+from services.runner import runner as ssh
 from services.state import save_decision
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ async def upload_now_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.edit_message_text("\U0001f4e4 \uc5c5\ub85c\ub4dc \uc2dc\uc791...")
 
     try:
-        cmd = f"cd {LOCAL_YT_UPLOAD_DIR} && python run.py upload {video_id}"
+        cmd = f"cd {LOCAL_YT_UPLOAD_DIR} && {PYTHON_BIN} run.py upload {video_id}"
         out, err = ssh.execute(cmd)
     except Exception:
         await ssh_connect_error_reply(update)
@@ -113,7 +113,7 @@ async def schedule_confirm_callback(update: Update, context: ContextTypes.DEFAUL
     try:
         cmd = (
             f"cd {LOCAL_YT_UPLOAD_DIR} && "
-            f'python run.py upload {video_id} --publish-at "{iso_str}"'
+            f'{PYTHON_BIN} run.py upload {video_id} --publish-at "{iso_str}"'
         )
         out, err = ssh.execute(cmd)
     except Exception:
