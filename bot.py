@@ -23,6 +23,11 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+# httpx는 요청 URL을 통째로 INFO로 찍는데, 텔레그램 API URL에는 봇 토큰이
+# 그대로 들어 있다. 로그 파일에 토큰이 평문으로 쌓이는 걸 막는다.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 MENU = [

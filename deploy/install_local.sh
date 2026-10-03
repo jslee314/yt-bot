@@ -44,14 +44,15 @@ echo "[2/4] 의존성 설치"
 
 # ── 3. 설정 검증 (토큰이 실제로 유효한지 확인) ────────────
 echo "[3/4] 텔레그램 토큰 검증"
-.venv/bin/python - <<'PYEOF'
+.venv/bin/python - "$BOT_DIR/.env" <<'PYEOF'
+import os
 import sys
 
 import requests
 from dotenv import load_dotenv
-import os
 
-load_dotenv()
+# stdin으로 실행하면 find_dotenv()가 호출 프레임을 못 찾아 터진다. 경로를 명시한다.
+load_dotenv(sys.argv[1])
 token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 if not token or not chat_id:

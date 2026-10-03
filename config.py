@@ -11,7 +11,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+# 경로를 명시한다. find_dotenv()는 호출 프레임의 파일 위치에서 거슬러 올라가므로
+# launchd 실행이나 stdin 실행에서 엉뚱한 곳을 보거나 터질 수 있다.
+load_dotenv(Path(__file__).parent / ".env")
 
 # ── Telegram ───────────────────────────────────────────────
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")

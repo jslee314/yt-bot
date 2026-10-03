@@ -8,8 +8,13 @@ yt-bot 서버 없이도 동작 (Bot API 직접 호출).
 
 import json
 import os
+from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
+
+# 다른 프로젝트(yt-script 등)에서 import해도 토큰을 찾을 수 있도록 명시 로드.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
