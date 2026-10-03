@@ -82,11 +82,20 @@ def video_state(video_id: str) -> VideoState:
     return VideoState(video_id, STAGE_QUEUED)
 
 
+# 한국 채널 대본 ID 형식. glob("YT-*-*")의 `*`는 하이픈을 넘어가므로
+# YT-20260425-004-JA 같은 다른 시장용 폴더까지 잡힌다. auto_pipeline.sh의
+# 대상 선택과 같은 기준을 써서 /queue · /status가 실제 대상과 어긋나지 않게 한다.
+_KO_VIDEO_ID = re.compile(r"^YT-\d{8}-\d{3}$")
+
+
 def all_video_ids() -> list[str]:
     out = _script_outputs()
     if not out.is_dir():
         return []
-    return sorted(p.name for p in out.glob("YT-*-*") if p.is_dir())
+    return sorted(
+        p.name for p in out.glob("YT-*-*")
+        if p.is_dir() and _KO_VIDEO_ID.match(p.name)
+    )
 
 
 def queue() -> list[VideoState]:
