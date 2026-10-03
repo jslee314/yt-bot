@@ -37,8 +37,9 @@ def main() -> int:
         config.YOUTUBE_TOKEN_FILE.write_text(creds.to_json())
     yt = build("youtube", "v3", credentials=creds)
 
-    ch = yt.channels().list(part="contentDetails", mine=True).execute()
+    ch = yt.channels().list(part="contentDetails,snippet", mine=True).execute()
     uploads = ch["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    channel_title = ch["items"][0]["snippet"]["title"]  # 어느 채널 토큰으로 돌았는지 봇이 보여준다
 
     ids, token = [], None
     while True:
@@ -70,7 +71,7 @@ def main() -> int:
                 )
 
     stuck.sort(key=lambda x: x["uploaded"])
-    print(json.dumps({"total": len(ids), "stuck": stuck}, ensure_ascii=False))
+    print(json.dumps({"total": len(ids), "channel": channel_title, "stuck": stuck}, ensure_ascii=False))
     return 0
 
 

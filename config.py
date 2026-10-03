@@ -60,6 +60,40 @@ STALE_WARN_DAYS = int(os.getenv("STALE_WARN_DAYS", "3"))
 # ── 상태 DB ────────────────────────────────────────────────
 DB_PATH = os.getenv("DB_PATH", str(Path(__file__).parent / "state.db"))
 
+# ── 채널 (시장) ────────────────────────────────────────────
+# 봇 하나가 채널 여럿을 본다. 토큰 하나 = 채널 하나 (yt-upload/config.py 참고).
+# 두 채널은 Google 계정이 달라서, Studio 링크는 해당 계정으로 로그인돼 있어야 열린다.
+# id_re 는 lib/select_target.py 의 대상 선택과 같은 기준이어야 /status 가 파이프라인과
+# 어긋나지 않는다 — glob("YT-*-*")는 `*`가 하이픈을 넘어가 -JA 폴더까지 잡는다.
+CHANNELS = {
+    "ko": {
+        "label": "🇰🇷 KO",
+        "name": "괜찮아연구소",
+        "id_re": r"^YT-\d{8}-\d{3}$",
+        "token": os.getenv("YT_TOKEN_KO", "token.json"),
+        "credentials": os.getenv("YT_CREDENTIALS_KO", "credentials.json"),
+        # 채널 계정. GCP 콘솔 계정(jaeseon314@, 프로젝트 주인)과 다르다 — 헷갈리기 쉬운 자리.
+        "account": os.getenv("YT_ACCOUNT_KO", "jaeseonlee.0314@gmail.com"),
+        "state": PIPELINE_STATE_FILE,
+        "log_dir": PIPELINE_LOG_DIR,
+        "orchestrated": True,   # auto_pipeline.sh 가 이 채널을 돌린다
+    },
+    "ja": {
+        "label": "🇯🇵 JA",
+        "name": "今日もこんなふうに",
+        "id_re": r"^YT-\d{8}-\d{3}-JA$",
+        "token": os.getenv("YT_TOKEN_JA", "token.ja.json"),
+        "credentials": os.getenv("YT_CREDENTIALS_JA", "credentials.ja.json"),
+        "account": os.getenv("YT_ACCOUNT_JA", "jaeseonlee314@gmail.com"),
+        "state": LOCAL_YT_PIPELINE_DIR / "auto_pipeline.ja.state",
+        "log_dir": LOCAL_YT_PIPELINE_DIR / "logs" / "ja",
+        # auto_pipeline.sh 에 CHANNEL 매개변수가 들어오면 True 로 바꾼다.
+        # 그 전까지 /run ja 는 거부하고, /status ja 는 "미구성"을 표시한다.
+        "orchestrated": False,
+    },
+}
+DEFAULT_CHANNEL = "ko"
+
 
 def validate():
     """필수 설정 누락 시 즉시 종료 — launchd 로그에 원인이 남도록."""
