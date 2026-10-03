@@ -2,7 +2,7 @@
 
 /status  현재 상태 한 장 요약
 /queue   남은 작업 목록
-/run     파이프라인 즉시 실행 (24시간 제한 무시: /run force)
+/run     파이프라인 즉시 실행 (간격 제한 무시: /run force)
 /log     최근 실행 로그 tail
 /stop    실행 중인 파이프라인 중단
 /help    명령 목록
@@ -25,8 +25,8 @@ HELP = """🤖 <b>yt-bot 명령</b>
 
 /status — 파이프라인 상태 요약
 /queue — 남은 작업 목록
-/run — 지금 실행 (24시간 제한 적용)
-/run force — 24시간 제한 무시하고 실행
+/run — 지금 실행 (실행 간격 제한 적용)
+/run force — 간격 제한 무시하고 실행
 /log — 최근 로그 40줄
 /log 100 — 최근 로그 100줄
 /stop — 실행 중인 파이프라인 중단
@@ -70,11 +70,13 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not force:
         remain = pipeline.throttle_remaining()
         if remain:
-            h = int(remain.total_seconds() // 3600)
-            m = int((remain.total_seconds() % 3600) // 60)
+            days = int(pipeline.min_interval().total_seconds() // 86400) or 1
             await update.message.reply_text(
-                f"⏱ 24시간 제한으로 스킵됩니다 ({h}시간 {m}분 남음).\n"
-                f"무시하려면 <code>/run force</code>",
+                f"⏱ 실행 간격 {days}일 제한으로 스킵됩니다 "
+                f"({pipeline.human_delta(remain)} 남음).\n"
+                f"무시하려면 <code>/run force</code>\n\n"
+                f"⚠️ 간격은 ElevenLabs 크레딧 상한에 맞춘 값입니다 — "
+                f"당겨 돌리면 월 한도를 일찍 소진합니다.",
                 parse_mode="HTML",
             )
             return
@@ -100,7 +102,7 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🚀 실행 시작 (pid {pid})\n"
         f"대상: <code>{target}</code>\n"
-        f"{'⚠️ 24시간 제한 무시' if force else ''}\n\n"
+        f"{'⚠️ 간격 제한 무시 — 크레딧 소진 주의' if force else ''}\n\n"
         f"완료되면 알림이 옵니다. /log 로 중간 확인 가능.",
         parse_mode="HTML",
     )

@@ -6,8 +6,8 @@ auto_pipeline.sh가 "upload_package.json에 youtube_video_id가 있나?"로 진�
 """
 
 import json
+import os
 import re
-import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,6 +17,7 @@ from config import (
     LOCAL_YT_SCRIPT_DIR,
     LOCAL_YT_UPLOAD_DIR,
     PIPELINE_LOG_DIR,
+    PIPELINE_SCRIPT,
     PIPELINE_STATE_FILE,
     STALE_WARN_DAYS,
 )
@@ -198,15 +199,51 @@ def is_running() -> bool:
     return out.returncode == 0 and bool(out.stdout.strip())
 
 
+_INTERVAL_RE = re.compile(r'MIN_INTERVAL="\$\{YT_PIPELINE_MIN_INTERVAL:-(\d+)\}"')
+_INTERVAL_FALLBACK = timedelta(days=10)
+
+
+def min_interval() -> timedelta:
+    """실행 간격 — auto_pipeline.sh의 기본값을 읽어온다.
+
+    간격은 비용 정책(ElevenLabs 크레딧 상한)에 묶여 있어 바뀐다. 봇이 숫자를
+    복제하면 스크립트가 바뀔 때마다 /status가 거짓을 말하게 되므로,
+    스크립트를 단일 진실 공급원으로 두고 여기서 읽는다.
+    """
+    env = os.environ.get("YT_PIPELINE_MIN_INTERVAL")
+    if env and env.isdigit():
+        return timedelta(seconds=int(env))
+    try:
+        text = Path(PIPELINE_SCRIPT).read_text(encoding="utf-8")
+    except OSError:
+        return _INTERVAL_FALLBACK
+    m = _INTERVAL_RE.search(text)
+    return timedelta(seconds=int(m.group(1))) if m else _INTERVAL_FALLBACK
+
+
 def throttle_remaining() -> timedelta | None:
-    """24시간 throttle이 남아 있으면 남은 시간, 없으면 None."""
+    """실행 간격 제한이 남아 있으면 남은 시간, 없으면 None."""
     last = last_success()
     if last is None:
         return None
+    interval = min_interval()
     elapsed = datetime.now(KST) - last
-    if elapsed >= timedelta(hours=24):
+    if elapsed >= interval:
         return None
-    return timedelta(hours=24) - elapsed
+    return interval - elapsed
+
+
+def human_delta(td: timedelta) -> str:
+    """timedelta를 '3일 5시간' 같은 한국어 표기로."""
+    total = int(td.total_seconds())
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    if days:
+        return f"{days}일 {hours}시간"
+    if hours:
+        return f"{hours}시간 {minutes}분"
+    return f"{minutes}분"
 
 
 def is_stale() -> bool:
@@ -264,12 +301,17 @@ def summary() -> str:
     else:
         lines.append("▶️ 다음 대상: 없음 (모두 완료)")
 
-    # throttle
+    # 실행 간격 제한
+    interval_days = int(min_interval().total_seconds() // 86400) or 1
     remain = throttle_remaining()
     if remain:
-        h = int(remain.total_seconds() // 3600)
-        m = int((remain.total_seconds() % 3600) // 60)
-        lines.append(f"⏱ 24시간 제한: {h}시간 {m}분 남음 (/run force로 무시 가능)")
+        when = (now + remain).strftime("%m/%d %H:%M")
+        lines.append(
+            f"⏱ 실행 간격 {interval_days}일 — {human_delta(remain)} 남음 (~{when})"
+        )
+        lines.append("   당겨 돌리려면 /run force")
+    else:
+        lines.append(f"⏱ 실행 간격 {interval_days}일 — 지금 실행 가능")
 
     return "\n".join(lines)
 
