@@ -117,10 +117,25 @@ def last_success() -> datetime | None:
     return datetime.fromtimestamp(ts, KST)
 
 
+# 실행 로그가 아닌 것들 — launchd 자체 오류 로그는 파이프라인 판정 대상이 아니다.
+_NOT_RUN_LOGS = ("launchd.out.log", "launchd.err.log")
+
+
 def log_files() -> list[Path]:
+    """실행 로그를 오래된 것부터. 이름순이 아니라 mtime순으로 정렬한다.
+
+    파일명이 `20260519_030000.log`(cron 시절), `botrun_20261003_160000.log`(봇 실행),
+    `launchd.err.log`(launchd)로 섞여 있어 이름순 정렬은 숫자/영문 순서 때문에
+    실제 시간순과 어긋난다.
+    """
     if not PIPELINE_LOG_DIR.is_dir():
         return []
-    return sorted(PIPELINE_LOG_DIR.glob("*.log"))
+    logs = [
+        p
+        for p in PIPELINE_LOG_DIR.glob("*.log")
+        if p.is_file() and p.name not in _NOT_RUN_LOGS
+    ]
+    return sorted(logs, key=lambda p: p.stat().st_mtime)
 
 
 def latest_log() -> Path | None:
