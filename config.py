@@ -36,6 +36,10 @@ LOCAL_YT_PIPELINE_DIR = Path(
 PIPELINE_SCRIPT = os.getenv(
     "PIPELINE_SCRIPT", str(LOCAL_YT_PIPELINE_DIR / "auto_pipeline.sh")
 )
+# 미러 채널(JA) 오케스트레이터 — 제작·메타·publish_at 패치·업로드·알림을 한 번에.
+MIRROR_SCRIPT = os.getenv(
+    "MIRROR_SCRIPT", str(LOCAL_YT_PIPELINE_DIR / "mirror_pipeline.sh")
+)
 PIPELINE_LOG_DIR = Path(
     os.getenv("PIPELINE_LOG_DIR", str(LOCAL_YT_PIPELINE_DIR / "logs"))
 )
@@ -76,7 +80,8 @@ CHANNELS = {
         "account": os.getenv("YT_ACCOUNT_KO", "jaeseonlee.0314@gmail.com"),
         "state": PIPELINE_STATE_FILE,
         "log_dir": PIPELINE_LOG_DIR,
-        "orchestrated": True,   # auto_pipeline.sh 가 이 채널을 돌린다
+        "script": PIPELINE_SCRIPT,
+        "orchestrated": True,
     },
     "ja": {
         "label": "🇯🇵 JA",
@@ -87,9 +92,8 @@ CHANNELS = {
         "account": os.getenv("YT_ACCOUNT_JA", "jaeseonlee314@gmail.com"),
         "state": LOCAL_YT_PIPELINE_DIR / "auto_pipeline.ja.state",
         "log_dir": LOCAL_YT_PIPELINE_DIR / "logs" / "ja",
-        # auto_pipeline.sh 에 CHANNEL 매개변수가 들어오면 True 로 바꾼다.
-        # 그 전까지 /run ja 는 거부하고, /status ja 는 "미구성"을 표시한다.
-        "orchestrated": False,
+        "script": MIRROR_SCRIPT,
+        "orchestrated": True,
     },
 }
 DEFAULT_CHANNEL = "ko"

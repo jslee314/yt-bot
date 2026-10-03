@@ -212,9 +212,13 @@ def tail_log(log_path: Path, lines: int = 30) -> str:
 
 
 # 제작이 돌고 있다고 볼 프로세스 패턴. auto_pipeline.sh만 보면
-# batch_run.sh / resume_build.sh / run.sh 를 직접 띄운 수동 실행을 놓친다.
+# batch_run.sh / resume_build.sh / mirror_* 를 직접 띄운 수동 실행을 놓친다.
+# 단계 사이에는 make_all.py 가 없으므로 상위 스크립트도 모두 넣는다.
 # 프로세스 단위라 채널을 가르지 못한다 — 어느 채널이든 "돌고 있음"이다.
-_RUNNING_PATTERN = r"auto_pipeline\.sh|batch_run\.sh|resume_build\.sh|make_all\.py"
+_RUNNING_PATTERN = (
+    r"auto_pipeline\.sh|mirror_pipeline\.sh|mirror_build\.sh"
+    r"|batch_run\.sh|resume_build\.sh|make_all\.py"
+)
 
 
 def is_running() -> bool:

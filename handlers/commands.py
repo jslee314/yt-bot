@@ -26,7 +26,6 @@ from config import (
     DEFAULT_CHANNEL,
     LOCAL_YT_UPLOAD_DIR,
     PATH_PREPEND,
-    PIPELINE_SCRIPT,
     PYTHON_BIN,
 )
 from handlers.common import auth_check
@@ -122,9 +121,11 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE):
     env_prefix = "YT_PIPELINE_FORCE=1 " if force else ""
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = Path(ch["log_dir"]) / f"botrun_{stamp}.log"
+    # 채널마다 오케스트레이터가 다르다 — KO는 auto_pipeline.sh, JA는 mirror_pipeline.sh
+    # (한국판 이미지를 재사용하고 TTS만 새 언어로 만든다).
     cmd = (
         f'PATH="{PATH_PREPEND}:$PATH" {env_prefix}'
-        f'caffeinate -i /bin/bash "{PIPELINE_SCRIPT}"'
+        f'caffeinate -i /bin/bash "{ch["script"]}"'
     )
     pid = runner.spawn(cmd, log_path)
 
