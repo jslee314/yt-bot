@@ -381,11 +381,33 @@ async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _send_links(update.message, market or DEFAULT_CHANNEL, specific)
 
 
+@auth_check
+async def cmd_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """다가오는 공개 일정. /schedule [ko|ja] [일수]
+
+    업로드만 하고 예약을 빼먹으면 private 로 묻힌다 — 한국 숏폼 11개가 5개월 그랬다.
+    그래서 최근 업로드 중 예약이 없는 것을 맨 위에 세운다.
+    """
+    args = list(context.args or [])
+    market, rest = _split_channel(args)
+    days = 14
+    for a in rest:
+        if a.isdigit():
+            days = max(1, min(90, int(a)))
+            break
+    markets = [market] if market else list(CHANNELS)
+    await update.message.reply_text(
+        pipeline.schedule_report(markets, days), parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+
+
 def register(app: Application):
     app.add_handler(CommandHandler("status", cmd_status, filters=filters.UpdateType.MESSAGE))
     app.add_handler(CommandHandler("queue", cmd_queue, filters=filters.UpdateType.MESSAGE))
     app.add_handler(CommandHandler("run", cmd_run, filters=filters.UpdateType.MESSAGE))
     app.add_handler(CommandHandler("log", cmd_log, filters=filters.UpdateType.MESSAGE))
+    app.add_handler(CommandHandler("schedule", cmd_schedule, filters=filters.UpdateType.MESSAGE))
     app.add_handler(CommandHandler("stop", cmd_stop, filters=filters.UpdateType.MESSAGE))
     app.add_handler(CommandHandler("stuck", cmd_stuck, filters=filters.UpdateType.MESSAGE))
     app.add_handler(CommandHandler("link", cmd_link, filters=filters.UpdateType.MESSAGE))

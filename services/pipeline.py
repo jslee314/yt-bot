@@ -488,3 +488,140 @@ def summary_all() -> str:
 
 def _esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+# ── 예약 공개 일정 ───────────────────────────────────────────
+# upload_package.json 에 영상별 publish_at(UTC)이 들어 있다. 업로드만 하고
+# 예약을 빼먹으면 private 로 영원히 묻힌다 — 한국 숏폼 11개가 5개월 그랬고,
+# run.py upload 를 손으로 돌리면 auto_pipeline 4단계가 빠져 똑같이 된다.
+# 그래서 "예약 없음"을 일정표에서 눈에 띄게 세운다.
+
+@dataclass
+class Scheduled:
+    video_id: str          # 세트 id
+    kind: str              # 롱폼 / 숏폼
+    title: str
+    youtube_id: str | None
+    publish_at: datetime | None   # KST
+    market: str
+    recent: bool = False          # 패키지가 최근에 쓰였나 (예약 누락 경고 대상)
+
+
+def _parse_utc(v) -> datetime | None:
+    if not v or not isinstance(v, str):
+        return None
+    try:
+        return datetime.fromisoformat(v.replace("Z", "+00:00")).astimezone(KST)
+    except ValueError:
+        return None
+
+
+# publish_at 은 2026-05-04(커밋 4f2b2a2)에 생겼다. 그 전에 올린 세트는 이 필드가
+# 없지만 이미 공개돼 있다 — 일정표가 그걸 "묻힌다"고 경고하면 거짓 경보가 80건 난다.
+# 그래서 '최근에 올렸는데 예약이 없는 것'만 위험으로 센다. 옛 업로드의 실제 공개
+# 여부는 /stuck 이 YouTube 에 직접 물어서 판정한다.
+RECENT_UPLOAD_DAYS = 14
+
+
+def scheduled_items(market: str = DEFAULT_CHANNEL) -> list[Scheduled]:
+    """업로드된 영상의 공개 예약을 모은다. 예약이 없는 것도 포함한다."""
+    items: list[Scheduled] = []
+    out = _upload_outputs()
+    if not out.is_dir():
+        return items
+    rx = _ID_RE[market]
+    for d in sorted(out.iterdir()):
+        if not d.is_dir() or not rx.match(d.name):
+            continue
+        pkg = d / "upload_package.json"
+        if not pkg.exists():
+            continue
+        try:
+            data = json.loads(pkg.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        try:
+            age = datetime.now(KST) - datetime.fromtimestamp(pkg.stat().st_mtime, KST)
+            recent = age <= timedelta(days=RECENT_UPLOAD_DAYS)
+        except OSError:
+            recent = False
+        lf = data.get("longform") or {}
+        if lf.get("youtube_video_id"):
+            items.append(Scheduled(d.name, "롱폼", lf.get("title", ""),
+                                   lf.get("youtube_video_id"),
+                                   _parse_utc(lf.get("publish_at")), market, recent))
+        for sh in data.get("shorts") or []:
+            if sh.get("youtube_video_id"):
+                items.append(Scheduled(d.name, "숏폼", sh.get("title", ""),
+                                       sh.get("youtube_video_id"),
+                                       _parse_utc(sh.get("publish_at")), market, recent))
+    return items
+
+
+def schedule_report(markets: list[str] | None = None, days: int = 14) -> str:
+    """다가오는 공개 일정 + 예약 누락 경고. HTML."""
+    markets = markets or list(CHANNELS)
+    now = datetime.now(KST)
+    horizon = now + timedelta(days=days)
+
+    upcoming: list[Scheduled] = []
+    missing: list[Scheduled] = []
+    published: dict[str, int] = {}
+    legacy = 0
+    for m in markets:
+        for it in scheduled_items(m):
+            if it.publish_at is None:
+                if it.recent:
+                    missing.append(it)
+                else:
+                    legacy += 1
+            elif it.publish_at <= now:
+                published[m] = published.get(m, 0) + 1
+            elif it.publish_at <= horizon:
+                upcoming.append(it)
+    upcoming.sort(key=lambda x: x.publish_at)
+
+    lines = [f"🗓 <b>공개 일정</b>  ({now.strftime('%m/%d %H:%M')} KST 기준, 앞으로 {days}일)", ""]
+
+    if missing:
+        lines.append(f"⚠️ <b>최근 올렸는데 예약이 없는 영상 {len(missing)}개</b> — 공개되지 않고 묻힙니다")
+        for it in missing[:10]:
+            ch = CHANNELS[it.market]
+            lines.append(f"  {ch['label']} <code>{it.youtube_id}</code> {it.kind} "
+                         f"{_esc(it.title[:28])}")
+        if len(missing) > 10:
+            lines.append(f"  … 외 {len(missing) - 10}개")
+        lines.append("")
+
+    if not upcoming:
+        lines.append("예정된 공개가 없습니다.")
+    else:
+        day = None
+        for it in upcoming:
+            d = it.publish_at.strftime("%m/%d (%a)")
+            if d != day:
+                day = d
+                left = (it.publish_at.date() - now.date()).days
+                when = "오늘" if left == 0 else ("내일" if left == 1 else f"{left}일 뒤")
+                lines.append(f"<b>{d}</b> · {when}")
+            ch = CHANNELS[it.market]
+            lines.append(f"  {it.publish_at.strftime('%H:%M')} {ch['label']} "
+                         f"{it.kind} {_esc(it.title[:30])}")
+        lines.append("")
+
+    done = " · ".join(f"{CHANNELS[m]['label']} {n}" for m, n in sorted(published.items()))
+    if done:
+        lines.append(f"이미 공개됨: {done}")
+    if legacy:
+        lines.append(f"<i>예약 필드가 없는 옛 업로드 {legacy}개는 제외했습니다 "
+                     f"(publish_at 도입 이전). 실제 공개 여부는 /stuck 으로 확인하세요.</i>")
+
+    nxt = []
+    for m in markets:
+        if not CHANNELS[m].get("orchestrated"):
+            continue
+        rem = throttle_remaining(m)
+        nxt.append(f"{CHANNELS[m]['label']} " + ("지금 가능" if not rem else human_delta(rem) + " 뒤"))
+    if nxt:
+        lines.append("다음 제작 가능: " + " · ".join(nxt))
+    return "\n".join(lines)

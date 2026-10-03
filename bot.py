@@ -36,6 +36,7 @@ MENU = [
     BotCommand("queue", "남은 작업 목록"),
     BotCommand("run", "지금 실행"),
     BotCommand("log", "최근 로그"),
+    BotCommand("schedule", "공개 일정"),
     BotCommand("stop", "실행 중단"),
     BotCommand("stuck", "공개 안 된 영상 점검"),
     BotCommand("link", "숏폼→롱폼 관련 동영상 걸기"),
