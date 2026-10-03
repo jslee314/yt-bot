@@ -27,12 +27,18 @@ LOCAL_YT_PRODUCTION_DIR = os.getenv(
 LOCAL_YT_UPLOAD_DIR = os.getenv("LOCAL_YT_UPLOAD_DIR", str(PROJECTS_DIR / "yt-upload"))
 
 # ── 파이프라인 오케스트레이션 ──────────────────────────────
-PIPELINE_SCRIPT = os.getenv("PIPELINE_SCRIPT", str(PROJECTS_DIR / "auto_pipeline.sh"))
+# 오케스트레이터는 별도 저장소(yt-pipeline)에 있다.
+LOCAL_YT_PIPELINE_DIR = Path(
+    os.getenv("LOCAL_YT_PIPELINE_DIR", str(PROJECTS_DIR / "yt-pipeline"))
+)
+PIPELINE_SCRIPT = os.getenv(
+    "PIPELINE_SCRIPT", str(LOCAL_YT_PIPELINE_DIR / "auto_pipeline.sh")
+)
 PIPELINE_LOG_DIR = Path(
-    os.getenv("PIPELINE_LOG_DIR", str(PROJECTS_DIR / "auto_pipeline_logs"))
+    os.getenv("PIPELINE_LOG_DIR", str(LOCAL_YT_PIPELINE_DIR / "logs"))
 )
 PIPELINE_STATE_FILE = Path(
-    os.getenv("PIPELINE_STATE_FILE", str(PROJECTS_DIR / "auto_pipeline.state"))
+    os.getenv("PIPELINE_STATE_FILE", str(LOCAL_YT_PIPELINE_DIR / "auto_pipeline.state"))
 )
 
 # ── 실행 환경 ──────────────────────────────────────────────

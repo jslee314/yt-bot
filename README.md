@@ -14,7 +14,7 @@ YouTube 자동화 파이프라인(yt-script → yt-production_whisk → yt-uploa
 ```
 [맥 (집)]                                      [Telegram]
 
-launchd ──03:00── auto_pipeline.sh
+launchd ──03:00── yt-pipeline/auto_pipeline.sh
   (자고 있었으면            │
    깨어날 때 실행)          ├─ 시작/성공/실패 ──→ 📱 알림
                             │   (notify.sh, curl)
@@ -95,11 +95,14 @@ yt-bot/
 
 ## 관련 파일 (yt-bot 밖)
 
+오케스트레이터는 별도 저장소 [yt-pipeline](../yt-pipeline)에 있다.
+
 | 경로 | 역할 |
 |---|---|
-| `../auto_pipeline.sh` | 파이프라인 오케스트레이터. 단계별 알림 훅 포함 |
-| `../notify.sh` | 쉘용 알림 헬퍼 (curl만 사용, 봇 없이 동작) |
-| `../com.jslee.yt-pipeline.plist` | 파이프라인 스케줄 (cron 대체) |
+| `../yt-pipeline/auto_pipeline.sh` | 파이프라인 오케스트레이터. 단계별 알림 훅 포함 |
+| `../yt-pipeline/notify.sh` | 쉘용 알림 헬퍼 (curl만 사용, 봇 없이 동작) |
+| `../yt-pipeline/deploy/install.sh` | 파이프라인 스케줄 등록 (cron 대체) |
+| `../yt-pipeline/logs/` | 실행 로그 — `/status`와 `/log`가 읽는다 |
 
 ### cron을 쓰지 않는 이유
 
