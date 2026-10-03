@@ -37,6 +37,7 @@ MENU = [
     BotCommand("log", "최근 로그"),
     BotCommand("stop", "실행 중단"),
     BotCommand("stuck", "공개 안 된 영상 점검"),
+    BotCommand("link", "숏폼→롱폼 관련 동영상 걸기"),
     BotCommand("help", "도움말"),
 ]
 

@@ -6,6 +6,7 @@
 /log     최근 실행 로그 tail
 /stop    실행 중인 파이프라인 중단
 /stuck   채널에서 올라갔지만 공개도 예약도 안 된 영상 찾기
+/link    숏폼에 롱폼 '관련 동영상'을 걸기 위한 Studio 편집 링크 목록
 /help    명령 목록
 """
 
@@ -27,10 +28,16 @@ from config import (
 from handlers.common import auth_check
 from services import pipeline
 from services.runner import runner
+from services.state import get_decision, save_decision
 
 logger = logging.getLogger(__name__)
 
 STUCK_TOOL = Path(__file__).resolve().parent.parent / "tools" / "stuck_videos.py"
+
+# 숏폼의 '관련 동영상'은 Data API에 필드가 없어 Studio에서만 걸 수 있다.
+# 그래서 봇은 편집 화면으로 바로 가는 링크를 뿌리고, 완료 표시만 기록한다.
+STUDIO_EDIT = "https://studio.youtube.com/video/{id}/edit"
+TG_LIMIT = 3800  # 텔레그램 메시지 상한 4096 아래로
 
 HELP = """🤖 <b>yt-bot 명령</b>
 
@@ -42,6 +49,8 @@ HELP = """🤖 <b>yt-bot 명령</b>
 /log 100 — 최근 로그 100줄
 /stop — 실행 중인 파이프라인 중단
 /stuck — 올라갔지만 공개 안 된 영상 점검
+/link — 숏폼→롱폼 관련 동영상 걸 Studio 링크
+/link done YT-… — 그 세트 연결 완료로 기록
 /help — 이 도움말
 
 영상이 완성되거나 실패하면 알림이 자동으로 옵니다."""
@@ -200,6 +209,85 @@ async def cmd_stuck(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
 
 
+def _uploaded_sets():
+    """업로드된 세트를 최신순으로: (video_id, 롱폼 제목, 롱폼 yt id, [(번호, 숏폼 제목, 숏폼 yt id)])."""
+    sets = []
+    pkgs = sorted(Path(LOCAL_YT_UPLOAD_DIR, "outputs").glob("*/upload_package.json"), reverse=True)
+    for pkg in pkgs:
+        try:
+            data = json.loads(pkg.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        lf = data.get("longform", {})
+        if not lf.get("youtube_video_id"):
+            continue
+        shorts = [
+            (i, s.get("title") or f"숏폼 {i}", s["youtube_video_id"])
+            for i, s in enumerate(data.get("shorts", []), 1)
+            if s.get("youtube_video_id")
+        ]
+        if shorts:
+            sets.append((pkg.parent.name, lf.get("title", ""), lf["youtube_video_id"], shorts))
+    return sets
+
+
+def _link_block(video_id, long_title, long_id, shorts) -> str:
+    lines = [
+        f"📺 <b>{pipeline._esc(long_title[:30])}</b>  <code>{video_id}</code>",
+        f"   연결할 롱폼: youtu.be/{long_id}",
+    ]
+    for i, title, sid in shorts:
+        lines.append(f"   {i}. {pipeline._esc(title[:22])}")
+        lines.append(f"      {STUDIO_EDIT.format(id=sid)}")
+    lines.append(f"   끝나면 → <code>/link done {video_id}</code>")
+    return "\n".join(lines)
+
+
+async def _send_chunked(message, header: str, blocks: list[str]):
+    """세트 단위로 끊어 4096자 상한을 넘지 않게 여러 메시지로 보낸다."""
+    buf = header
+    for b in blocks:
+        if len(buf) + len(b) + 2 > TG_LIMIT:
+            await message.reply_text(buf, parse_mode="HTML", disable_web_page_preview=True)
+            buf = ""
+        buf += ("\n\n" if buf else "") + b
+    if buf:
+        await message.reply_text(buf, parse_mode="HTML", disable_web_page_preview=True)
+
+
+@auth_check
+async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """숏폼마다 Studio 편집 링크를 띄운다. 거기서 '관련 동영상' → 롱폼 선택 → 저장."""
+    args = list(context.args or [])
+
+    if len(args) >= 2 and args[0].lower() == "done":
+        save_decision(args[1], "related_linked", "done")
+        await update.message.reply_text(f"✅ <code>{args[1]}</code> 관련 동영상 연결 완료로 기록했습니다.",
+                                        parse_mode="HTML")
+        return
+
+    sets = _uploaded_sets()
+    if args and args[0].lower() != "all":
+        pending = [s for s in sets if s[0] == args[0]]
+        if not pending:
+            await update.message.reply_text(f"업로드된 세트 중에 <code>{args[0]}</code> 가 없습니다.",
+                                            parse_mode="HTML")
+            return
+    else:
+        pending = [s for s in sets if get_decision(s[0], "related_linked") != "done"]
+        if not pending:
+            await update.message.reply_text("✅ 미연결 세트가 없습니다. 모든 숏폼에 관련 동영상이 걸린 것으로 기록돼 있습니다.")
+            return
+
+    n_shorts = sum(len(s[3]) for s in pending)
+    header = (
+        f"🔗 <b>숏폼 → 롱폼 관련 동영상</b>  미연결 {len(pending)}세트 · 숏폼 {n_shorts}개\n"
+        "링크를 열면 Studio 편집 화면 → 오른쪽 <b>관련 동영상</b> → 아래 롱폼 선택 → 저장.\n"
+        "채널에 <b>고급 기능 액세스</b>가 있어야 메뉴가 보입니다 (Studio → 설정 → 채널 → 기능 사용 자격요건)."
+    )
+    await _send_chunked(update.message, header, [_link_block(*s) for s in pending])
+
+
 @auth_check
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP, parse_mode="HTML")
@@ -212,4 +300,5 @@ def register(app: Application):
     app.add_handler(CommandHandler("log", cmd_log))
     app.add_handler(CommandHandler("stop", cmd_stop))
     app.add_handler(CommandHandler("stuck", cmd_stuck))
+    app.add_handler(CommandHandler("link", cmd_link))
     app.add_handler(CommandHandler(["help", "start"], cmd_help))
