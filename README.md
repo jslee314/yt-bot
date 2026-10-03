@@ -49,17 +49,26 @@ launchd에 등록한다.
 
 ## 명령
 
+채널(`ko` 괜찮아연구소 / `ja` 今日もこんなふうに)은 첫 인자로 고른다. 생략하면 `ko`.
+사용법 전문은 봇 안에서 `/help` 로 본다 — `handlers/help.py` 가 단일 출처다.
+
 | 명령 | 동작 |
 |---|---|
-| `/status` | 마지막 성공 시각, 최근 실행 판정, 큐 길이, 다음 대상, throttle 잔여 |
-| `/queue` | 미업로드 작업 목록 (파이프라인이 집는 순서) |
-| `/run` | 지금 실행 (24시간 제한 적용) |
-| `/run force` | 24시간 제한 무시하고 실행 |
-| `/log [줄수]` | 최근 실행 로그 tail (기본 40줄) |
+| `/status [ch]` | 모든 채널 한 장(ko 전체 + 나머지 요약). 마지막 성공, 최근 판정, 큐, 다음 대상, 간격 잔여 |
+| `/queue [ch]` | 미업로드 작업 목록 (파이프라인이 집는 순서) |
+| `/run [ch] [force]` | 지금 실행 (10일 간격 적용). `force` 는 간격 무시 — 크레딧 소모 주의 |
+| `/log [ch] [줄수]` | 최근 실행 로그 tail (기본 40줄) |
 | `/stop` | 실행 중인 파이프라인 중단 |
+| `/stuck [ch]` | 채널에서 올라갔지만 공개도 예약도 안 된 영상 찾기 (채널 토큰으로 조회) |
+| `/link [ch\|all]` | 숏폼마다 롱폼 '관련 동영상'을 걸 Studio 편집 링크. `/link done <id>` 로 세트 완료 기록 |
+| `/help [주제\|pin]` | 사용법. 주제: 명령·채널·알림·link·run·stuck·실험. `pin` 은 개요를 상단 고정 |
 
 `/status`는 마지막 성공이 `STALE_WARN_DAYS`(기본 3일)를 넘기면 경고를 띄운다.
-**알림이 없어 조용히 죽은 걸 모르는 상황**을 막는 장치다.
+**알림이 없어 조용히 죽은 걸 모르는 상황**을 막는 장치다. 실행 간격은 `auto_pipeline.sh`
+의 `MIN_INTERVAL` 을 읽어 온다 — 숫자를 복제하지 않는다.
+
+`/run ja` 는 `config.CHANNELS["ja"]["orchestrated"]` 가 `True` 가 될 때까지 거부한다
+(`auto_pipeline.sh` 에 `CHANNEL` 매개변수가 들어오면 바꾼다).
 
 ## 개입 지점 (파이프라인 알림에 붙는 버튼)
 
@@ -82,7 +91,8 @@ yt-bot/
 │   ├── pipeline.py             # 파이프라인 상태 조회 (단일 진실 공급원)
 │   └── state.py                # 결정 이력 (SQLite)
 ├── handlers/
-│   ├── commands.py             # /status /queue /run /log /stop /help
+│   ├── commands.py             # /status /queue /run /log /stop /stuck /link (채널 인자)
+│   ├── help.py                 # /help — 주제별 설명서, /help pin
 │   ├── script_complete.py      # 알림 1 (훅·썸네일·제목)
 │   ├── production_complete.py  # 알림 2 (업로드·예약)
 │   ├── hook.py / thumbnail.py / title.py / upload.py
