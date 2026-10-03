@@ -197,4 +197,6 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def register(app: Application):
-    app.add_handler(CommandHandler(["help", "start", "사용법"], cmd_help))
+    # Telegram 명령은 소문자 영문·숫자·밑줄만 허용한다 — 한글 별칭을 넣으면 기동 시
+    # CommandHandler 가 ValueError 를 던져 봇이 재시작 루프에 빠진다 (2026-10-03 실측).
+    app.add_handler(CommandHandler(["help", "start"], cmd_help))
