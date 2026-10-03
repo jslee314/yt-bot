@@ -15,6 +15,7 @@
 
 import json
 import logging
+import asyncio
 from datetime import datetime
 from pathlib import Path
 
@@ -27,10 +28,12 @@ from config import (
     LOCAL_YT_UPLOAD_DIR,
     PATH_PREPEND,
     PYTHON_BIN,
+    FORCE_MONTHLY_LIMIT,
 )
 from handlers.common import auth_check
 from services import pipeline
 from services.runner import runner
+from services import state
 from services.state import get_decision, save_decision
 
 logger = logging.getLogger(__name__)
@@ -99,6 +102,19 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     force = bool(rest) and rest[0].lower() in ("force", "-f", "강제")
 
+    if force:
+        used = state.count_forced_runs()
+        if used >= FORCE_MONTHLY_LIMIT:
+            await update.message.reply_text(
+                f"🚫 이번 달 <code>force</code> 한도를 다 썼습니다 "
+                f"({used}/{FORCE_MONTHLY_LIMIT}회).\n\n"
+                f"force 1회는 TTS 약 6,242자 + 이미지 + 채널 일일 쿼터 전부를 씁니다. "
+                f"ElevenLabs Starter 월 40,000자 한도를 넘기지 않으려고 둔 상한입니다.\n\n"
+                f"정말 더 돌려야 하면 <code>FORCE_MONTHLY_LIMIT</code> 를 올리고 봇을 재시작하세요.",
+                parse_mode="HTML",
+            )
+            return
+
     if not force:
         remain = pipeline.throttle_remaining(market)
         if remain:
@@ -128,12 +144,18 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f'caffeinate -i /bin/bash "{ch["script"]}"'
     )
     pid = runner.spawn(cmd, log_path)
+    if force:
+        state.record_forced_run(market, target)
+        left = max(0, FORCE_MONTHLY_LIMIT - state.count_forced_runs())
+        force_note = f"⚠️ 간격 제한 무시 — 이번 달 force 잔여 {left}회"
+    else:
+        force_note = ""
 
     await update.message.reply_text(
         f"🚀 {ch['label']} 실행 시작 (pid {pid})\n"
         f"대상: <code>{target}</code>\n"
-        f"{'⚠️ 간격 제한 무시 — 크레딧 소진 주의' if force else ''}\n\n"
-        f"완료되면 알림이 옵니다. /log 로 중간 확인 가능.",
+        f"{force_note}\n\n"
+        f"완료되면 알림이 옵니다. /log 로 중간 확인, /stop 으로 중단.",
         parse_mode="HTML",
     )
 
@@ -164,13 +186,29 @@ async def cmd_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @auth_check
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not pipeline.is_running():
+    procs = pipeline.running_procs()
+    if not procs:
         await update.message.reply_text("실행 중인 파이프라인이 없습니다.")
         return
-    runner.execute("pkill -f auto_pipeline.sh", timeout=30)
+
+    await update.message.reply_text(f"🛑 중단 중… ({len(procs)}개 프로세스)")
+    # pkill -f 는 오케스트레이터만 죽이고 자식(make_all.py·ffmpeg·TTS)은
+    # 별도 세션에 있어 살아남았다 — 돈이 계속 나갔다. 그룹째 보낸다.
+    r = await asyncio.to_thread(pipeline.stop_all)
+
+    if r["survived"]:
+        await update.message.reply_text(
+            f"⚠️ 일부가 아직 살아 있습니다: "
+            f"{', '.join(str(p) for p, _ in r['survived'])}\n"
+            f"터미널에서 확인이 필요합니다."
+        )
+        return
+
+    killed = f" (강제 종료 {len(r['killed'])}그룹)" if r["killed"] else ""
     await update.message.reply_text(
-        "🛑 중단 신호를 보냈습니다.\n"
-        "⚠️ 진행 중이던 TTS/이미지 생성 비용은 환불되지 않습니다."
+        f"🛑 중단 완료 — 프로세스 {len(r['procs'])}개, "
+        f"그룹 {len(r['pgids'])}개 종료{killed}.\n"
+        f"⚠️ 이미 쓴 TTS·이미지 비용은 환불되지 않습니다."
     )
 
 

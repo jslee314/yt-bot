@@ -11,6 +11,9 @@ auto_pipeline.sh가 "upload_package.json에 youtube_video_id가 있나?"로 진�
 import json
 import os
 import re
+import shlex
+import signal
+import time
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -220,16 +223,110 @@ _RUNNING_PATTERN = (
     r"|batch_run\.sh|resume_build\.sh|make_all\.py"
 )
 
+# 위 패턴은 "그 파일을 보고 있는" 프로세스까지 잡는다 —
+# tail -f auto_pipeline.sh, grep, 에디터, 심지어 패턴 문자열이 든 셸 래퍼까지.
+# /stop 이 그것들을 죽이면 안 되므로, 실제로 "실행 중"인지 argv로 가린다.
+_PIPELINE_SCRIPTS = {
+    "auto_pipeline.sh", "mirror_pipeline.sh", "mirror_build.sh",
+    "batch_run.sh", "resume_build.sh", "make_all.py", "run.sh",
+}
+_INTERPRETERS = {
+    "bash", "sh", "zsh", "env", "caffeinate", "nohup",
+    "python", "python3", "python3.10", "Python",
+}
 
-def is_running() -> bool:
-    """제작 파이프라인이 지금 돌고 있는지 — 프로세스 테이블로 확인."""
+
+def _is_pipeline_cmd(cmd: str) -> bool:
+    """argv가 '인터프리터가 파이프라인 스크립트를 실행 중'인 꼴인지.
+
+    tail -f …/auto_pipeline.sh  → argv[0]=tail      → 아님 (뷰어)
+    /bin/zsh -c '… mirror_build.sh …' → -c 본문     → 아님 (래퍼)
+    bash mirror_build.sh YT-…   → 실행 중           → 맞음
+    caffeinate -i env … bash mirror_build.sh → 실행 중 → 맞음
+    """
+    try:
+        parts = shlex.split(cmd)
+    except ValueError:
+        parts = cmd.split()
+    if not parts:
+        return False
+    if Path(parts[0]).name not in _INTERPRETERS:
+        return False
+    # `sh -c "<본문>"` 의 본문에는 어떤 문자열이든 들어갈 수 있다.
+    if "-c" in parts[1:3]:
+        return False
+    return any(Path(a).name in _PIPELINE_SCRIPTS for a in parts[1:])
+
+
+def running_procs() -> list[tuple[int, int, str]]:
+    """실제로 돌고 있는 파이프라인 프로세스 [(pid, pgid, command), …]."""
     try:
         out = subprocess.run(
             ["pgrep", "-f", _RUNNING_PATTERN], capture_output=True, text=True, timeout=10
         )
     except (subprocess.SubprocessError, OSError):
-        return False
-    return out.returncode == 0 and bool(out.stdout.strip())
+        return []
+    if out.returncode != 0:
+        return []
+    me = os.getpid()
+    my_pgid = os.getpgid(me)
+    found = []
+    for line in out.stdout.split():
+        try:
+            pid = int(line)
+        except ValueError:
+            continue
+        if pid == me:
+            continue
+        try:
+            cmd = subprocess.run(["ps", "-o", "command=", "-p", str(pid)],
+                                 capture_output=True, text=True, timeout=5).stdout.strip()
+            pgid = os.getpgid(pid)
+        except (subprocess.SubprocessError, OSError, ProcessLookupError):
+            continue
+        if pgid == my_pgid:          # 봇 자신의 그룹은 절대 건드리지 않는다
+            continue
+        if _is_pipeline_cmd(cmd):
+            found.append((pid, pgid, cmd))
+    return found
+
+
+def is_running() -> bool:
+    """제작 파이프라인이 지금 돌고 있는지 — 프로세스 테이블로 확인."""
+    return bool(running_procs())
+
+
+def stop_all(grace: float = 5.0) -> dict:
+    """돌고 있는 파이프라인을 프로세스 그룹째 멈춘다.
+
+    pkill -f 로는 오케스트레이터만 죽고 자식(make_all.py·ffmpeg·TTS 호출)은
+    start_new_session=True 로 떨어져 나와 살아남는다 — "중단했다"고 답하면서
+    돈은 계속 나갔다. 세션 리더의 프로세스 그룹에 보내야 전부 멈춘다.
+    """
+    procs = running_procs()
+    pgids = sorted({pgid for _, pgid, _ in procs})
+    result = {"procs": procs, "pgids": pgids, "termed": [], "killed": [], "survived": []}
+    for pgid in pgids:
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+            result["termed"].append(pgid)
+        except (ProcessLookupError, PermissionError) as e:
+            logger.warning("SIGTERM pgid=%s 실패: %s", pgid, e)
+    if not result["termed"]:
+        return result
+    time.sleep(grace)
+    for pgid in result["termed"]:
+        still = [p for p, g, _ in running_procs() if g == pgid]
+        if not still:
+            continue
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+            result["killed"].append(pgid)
+        except (ProcessLookupError, PermissionError):
+            pass
+    time.sleep(0.5)
+    result["survived"] = [(p, g) for p, g, _ in running_procs() if g in pgids]
+    return result
 
 
 def running_detail() -> str:

@@ -62,6 +62,10 @@ SHELL_TIMEOUT = int(os.getenv("SHELL_TIMEOUT", "1800"))
 STALE_WARN_DAYS = int(os.getenv("STALE_WARN_DAYS", "3"))
 
 # ── 상태 DB ────────────────────────────────────────────────
+# /run force 월 허용 횟수. 1회 ≈ 6,300원 + 채널 일일 쿼터 + TTS 6,242자.
+# 0 이면 force 자체를 막는다.
+FORCE_MONTHLY_LIMIT = int(os.getenv("FORCE_MONTHLY_LIMIT", "3"))
+
 DB_PATH = os.getenv("DB_PATH", str(Path(__file__).parent / "state.db"))
 
 # ── 채널 (시장) ────────────────────────────────────────────
