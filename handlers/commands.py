@@ -43,20 +43,7 @@ STUCK_TOOL = Path(__file__).resolve().parent.parent / "tools" / "stuck_videos.py
 STUDIO_EDIT = "https://studio.youtube.com/video/{id}/edit"
 TG_LIMIT = 3800  # 텔레그램 메시지 상한 4096 아래로
 
-HELP = """🤖 <b>yt-bot 명령</b>  (채널: ko=괜찮아연구소, ja=今日もこんなふうに)
-
-/status — 모든 채널 한 장  ·  /status ja — JA만
-/queue [ko|ja] — 남은 작업 목록
-/run [ko|ja] — 지금 실행 (실행 간격 제한 적용)
-/run ko force — 간격 제한 무시하고 실행
-/log [ko|ja] [줄수] — 최근 로그 (기본 40줄)
-/stop — 실행 중인 파이프라인 중단
-/stuck [ko|ja] — 올라갔지만 공개 안 된 영상 점검
-/link [ko|ja|all] — 숏폼→롱폼 관련 동영상 걸 Studio 링크
-/link done YT-… — 그 세트 연결 완료로 기록
-/help — 이 도움말
-
-채널을 생략하면 ko. 영상이 완성되거나 실패하면 알림이 자동으로 옵니다 (ko)."""
+# 사용법(/help)은 handlers/help.py — 주제별 설명서와 상단 고정.
 
 
 def _split_channel(args: list[str]) -> tuple[str | None, list[str]]:
@@ -355,11 +342,6 @@ async def cmd_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _send_links(update.message, market or DEFAULT_CHANNEL, specific)
 
 
-@auth_check
-async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(HELP, parse_mode="HTML")
-
-
 def register(app: Application):
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("queue", cmd_queue))
@@ -368,4 +350,3 @@ def register(app: Application):
     app.add_handler(CommandHandler("stop", cmd_stop))
     app.add_handler(CommandHandler("stuck", cmd_stuck))
     app.add_handler(CommandHandler("link", cmd_link))
-    app.add_handler(CommandHandler(["help", "start"], cmd_help))

@@ -13,6 +13,7 @@ from telegram.ext import Application, ContextTypes, MessageHandler, filters
 import config
 from config import BOT_TOKEN, CHAT_ID
 from handlers import commands, production_complete, script_complete
+from handlers import help as help_cmd
 from handlers.common import auth_check
 from handlers.thumbnail import handle_thumb_direct_input
 from handlers.title import handle_title_input
@@ -38,8 +39,17 @@ MENU = [
     BotCommand("stop", "실행 중단"),
     BotCommand("stuck", "공개 안 된 영상 점검"),
     BotCommand("link", "숏폼→롱폼 관련 동영상 걸기"),
-    BotCommand("help", "도움말"),
+    BotCommand("help", "사용법 (/help 주제 · /help pin)"),
 ]
+
+# 봇 프로필의 "이 봇은 무엇을 할 수 있나요?" — 채팅을 처음 열 때 보인다. (설명 512자, 짧은 설명 120자 제한)
+SHORT_DESCRIPTION = "괜찮아연구소·今日もこんなふうに 유튜브 자동화 — 상태 확인·실행·알림·숏폼 링크"
+DESCRIPTION = (
+    "유튜브 자동화 파이프라인을 폰에서 봅니다.\n"
+    "/status 상태 · /run 실행 · /log 로그 · /stuck 미공개 점검 · /link 숏폼→롱폼 링크\n"
+    "채널: ko 괜찮아연구소(기본) · ja 今日もこんなふうに — 명령 뒤에 채널을 붙입니다.\n"
+    "영상이 완성되거나 실패하면 알림이 자동으로 옵니다. 사용법: /help"
+)
 
 
 @auth_check
@@ -58,9 +68,15 @@ async def text_input_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _post_init(app: Application):
-    """폰의 명령 메뉴(/ 버튼)에 명령 목록을 등록."""
+    """폰의 명령 메뉴(/ 버튼)와 봇 프로필 설명을 등록."""
     await app.bot.set_my_commands(MENU)
     logger.info("command menu registered")
+    try:
+        await app.bot.set_my_short_description(SHORT_DESCRIPTION)
+        await app.bot.set_my_description(DESCRIPTION)
+        logger.info("bot description registered")
+    except Exception as e:  # noqa: BLE001 — 설명 등록 실패가 봇을 막아선 안 된다
+        logger.warning("set description failed: %s", e)
 
 
 def main():
@@ -69,8 +85,9 @@ def main():
 
     app = Application.builder().token(BOT_TOKEN).post_init(_post_init).build()
 
-    # 슬래시 명령 (상태 확인 / 실행 / 로그)
+    # 슬래시 명령 (상태 확인 / 실행 / 로그) + 사용법
     commands.register(app)
+    help_cmd.register(app)
 
     # 알림 1 관련 핸들러 (훅, 썸네일, 제목)
     script_complete.register(app)
