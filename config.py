@@ -80,7 +80,7 @@ CHANNELS = {
     },
     "ja": {
         "label": "🇯🇵 JA",
-        "name": "今日もこんなふうに",
+        "name": "大丈夫研究所",
         "id_re": r"^YT-\d{8}-\d{3}-JA$",
         "token": os.getenv("YT_TOKEN_JA", "token.ja.json"),
         "credentials": os.getenv("YT_CREDENTIALS_JA", "credentials.ja.json"),
