@@ -5,21 +5,32 @@
 /run     파이프라인 즉시 실행 (간격 제한 무시: /run force)
 /log     최근 실행 로그 tail
 /stop    실행 중인 파이프라인 중단
+/stuck   채널에서 올라갔지만 공개도 예약도 안 된 영상 찾기
 /help    명령 목록
 """
 
+import json
 import logging
 from datetime import datetime
+from pathlib import Path
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-from config import PATH_PREPEND, PIPELINE_LOG_DIR, PIPELINE_SCRIPT
+from config import (
+    LOCAL_YT_UPLOAD_DIR,
+    PATH_PREPEND,
+    PIPELINE_LOG_DIR,
+    PIPELINE_SCRIPT,
+    PYTHON_BIN,
+)
 from handlers.common import auth_check
 from services import pipeline
 from services.runner import runner
 
 logger = logging.getLogger(__name__)
+
+STUCK_TOOL = Path(__file__).resolve().parent.parent / "tools" / "stuck_videos.py"
 
 HELP = """🤖 <b>yt-bot 명령</b>
 
@@ -30,6 +41,7 @@ HELP = """🤖 <b>yt-bot 명령</b>
 /log — 최근 로그 40줄
 /log 100 — 최근 로그 100줄
 /stop — 실행 중인 파이프라인 중단
+/stuck — 올라갔지만 공개 안 된 영상 점검
 /help — 이 도움말
 
 영상이 완성되거나 실패하면 알림이 자동으로 옵니다."""
@@ -145,6 +157,50 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @auth_check
+async def cmd_stuck(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """채널 전체를 훑어 private·예약없음 영상을 찾는다. YouTube API 호출이라 몇 초 걸린다."""
+    msg = await update.message.reply_text("🔎 채널 점검 중… (YouTube API 조회, 몇 초 걸립니다)")
+
+    cmd = f'cd "{LOCAL_YT_UPLOAD_DIR}" && {PYTHON_BIN} "{STUCK_TOOL}" "{LOCAL_YT_UPLOAD_DIR}"'
+    try:
+        out, err = runner.execute(cmd, timeout=180)
+        data = json.loads(out.strip().splitlines()[-1])
+    except Exception as e:  # noqa: BLE001 — 사용자에게 원인을 그대로 보여주는 게 낫다
+        logger.exception("stuck check failed")
+        detail = (err or str(e))[-600:]
+        await msg.edit_text(
+            f"⚠️ 점검 실패\n<pre>{pipeline._esc(detail)}</pre>", parse_mode="HTML"
+        )
+        return
+
+    stuck = data.get("stuck", [])
+    total = data.get("total", 0)
+    if not stuck:
+        await msg.edit_text(
+            f"✅ 방치된 영상 없음\n채널 {total}개 전부 공개됐거나 공개 예약돼 있습니다."
+        )
+        return
+
+    lines = [
+        f"⚠️ <b>올라갔지만 공개 안 된 영상 {len(stuck)}개</b> (채널 {total}개 중)",
+        "",
+    ]
+    for v in stuck[:20]:
+        lines.append(
+            f"• [{v['privacy']}] {pipeline._esc(v['title'][:28])}\n"
+            f"   업로드 {v['uploaded']} · https://youtu.be/{v['id']}"
+        )
+    if len(stuck) > 20:
+        lines.append(f"\n… 그 외 {len(stuck) - 20}개")
+    lines += [
+        "",
+        "이 상태로 두면 영원히 비공개입니다.",
+        "YouTube Studio에서 공개하거나, Claude에 분산 예약을 요청하세요.",
+    ]
+    await msg.edit_text("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
+
+
+@auth_check
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP, parse_mode="HTML")
 
@@ -155,4 +211,5 @@ def register(app: Application):
     app.add_handler(CommandHandler("run", cmd_run))
     app.add_handler(CommandHandler("log", cmd_log))
     app.add_handler(CommandHandler("stop", cmd_stop))
+    app.add_handler(CommandHandler("stuck", cmd_stuck))
     app.add_handler(CommandHandler(["help", "start"], cmd_help))

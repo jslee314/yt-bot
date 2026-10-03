@@ -183,13 +183,18 @@ def tail_log(log_path: Path, lines: int = 30) -> str:
     return "\n".join(content.splitlines()[-lines:])
 
 
+# 제작이 돌고 있다고 볼 프로세스 패턴. auto_pipeline.sh만 보면
+# batch_run.sh / resume_build.sh / run.sh 를 직접 띄운 수동 실행을 놓친다.
+_RUNNING_PATTERN = r"auto_pipeline\.sh|batch_run\.sh|resume_build\.sh|make_all\.py"
+
+
 def is_running() -> bool:
-    """auto_pipeline.sh가 지금 돌고 있는지 — 프로세스 테이블로 확인."""
+    """제작 파이프라인이 지금 돌고 있는지 — 프로세스 테이블로 확인."""
     import subprocess
 
     try:
         out = subprocess.run(
-            ["pgrep", "-f", "auto_pipeline.sh"],
+            ["pgrep", "-f", _RUNNING_PATTERN],
             capture_output=True,
             text=True,
             timeout=10,
@@ -197,6 +202,27 @@ def is_running() -> bool:
     except (subprocess.SubprocessError, OSError):
         return False
     return out.returncode == 0 and bool(out.stdout.strip())
+
+
+def running_detail() -> str:
+    """돌고 있는 make_all.py의 대상(run-dir)을 뽑아 '롱폼 YT-…' 식으로 요약."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["pgrep", "-fl", r"make_all\.py"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return ""
+    m = re.search(r"--run-dir\s+runs/(\S+)", out.stdout)
+    if not m:
+        return ""
+    run = m.group(1)
+    kind = "숏폼" if "_shorts_" in run else "롱폼"
+    return f"{kind} {run.split('_')[0]}"
 
 
 _INTERVAL_RE = re.compile(r'MIN_INTERVAL="\$\{YT_PIPELINE_MIN_INTERVAL:-(\d+)\}"')
@@ -265,7 +291,8 @@ def summary() -> str:
 
     # 실행 여부
     if is_running():
-        lines.append("🟢 <b>지금 실행 중</b>")
+        detail = running_detail()
+        lines.append(f"🟢 <b>지금 실행 중</b>{' — ' + detail if detail else ''}")
     else:
         last = last_success()
         if last is None:

@@ -36,6 +36,7 @@ MENU = [
     BotCommand("run", "지금 실행"),
     BotCommand("log", "최근 로그"),
     BotCommand("stop", "실행 중단"),
+    BotCommand("stuck", "공개 안 된 영상 점검"),
     BotCommand("help", "도움말"),
 ]
 
